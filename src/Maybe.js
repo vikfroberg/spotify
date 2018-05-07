@@ -16,4 +16,16 @@ Maybe.or = y => x =>
     x,
   );
 
+Maybe.map = fn =>
+  Maybe.fold({
+    Just: x => Maybe.Just(fn(x)),
+    Nothing: () => Maybe.Nothing,
+  });
+
+Maybe.withDefault = y =>
+  Maybe.fold({
+    Just: x => x,
+    Nothing: () => y,
+  });
+
 export default Maybe;

@@ -1,59 +1,222 @@
-import React from "react";
-import Maybe from "./Maybe";
+import React, { Fragment } from "react";
 import Dict from "./Dict";
+import RemoteData from "./RemoteData";
+import IO from "./IO";
+import Task from "./Task";
+import Cmd from "./Cmd";
+import Maybe from "./Maybe";
 import * as R from "ramda";
-import * as P from "./Promise";
 import * as Spotify from "./Spotify";
-import { getHashParams } from "./Dom";
+import * as Dom from "./Dom";
+import { pipe } from "./Utils";
 
-function pipe(x, fns) {
-  return fns.reduce((acc, fn) => fn(acc), x);
-}
+const traceFn = fn => x => {
+  console.log(x);
+  return fn(x);
+};
 
-class App extends React.Component {
-  state = {
-    maybeToken: Maybe.Nothing,
-    maybeArtists: Maybe.Nothing,
-  };
+const trace = x => {
+  console.log(x);
+  return x;
+};
 
-  componentDidMount() {
-    getHashParams()
-      |> P.map(Dict.get("access_token"))
-      |> P.flatMap(
-        Maybe.fold({
-          Just: Spotify.getTopArtists,
-          Nothing: () => P.fail("Could not find parameter access_token"),
+const wait = ms => Task((res, rej) => setTimeout(res, ms), clearTimeout);
+const debounce = (ms, task) => wait(ms).flatMap(() => task);
+
+// Model
+
+const init = () => ({
+  model: {
+    artist: "",
+    remoteToken: RemoteData.Loading,
+    remoteSearch: RemoteData.NotAsked,
+  },
+  commands: [Cmd.fromTask(tokenSuccess, tokenFailure, accessTokenTask)],
+  subscriptions: {
+    remoteSearch: Cmd.none,
+  },
+});
+
+// Updaters
+
+const tokenSuccess = token => ({ model, commands }) => ({
+  model: {
+    ...model,
+    remoteToken: RemoteData.Success(token),
+  },
+});
+
+const tokenFailure = err => ({ model }) => ({
+  model: {
+    ...model,
+    remoteToken: RemoteData.Failure(err),
+  },
+});
+
+const changeArtist = (artist, token) => ({ model, subscriptions }) => ({
+  model: {
+    ...model,
+    artist,
+    remoteSearch: artist.length > 2 ? RemoteData.Loading : RemoteData.NotAsked,
+  },
+  subscriptions: {
+    ...subscriptions,
+    searchArtist:
+      artist.length > 2
+        ? Cmd.fromTask(
+            searchArtistSuccess,
+            searchArtistFailure,
+            debounce(500, searchArtist(artist, token)),
+          )
+        : Cmd.none,
+  },
+});
+
+const searchArtistSuccess = res => ({ model }) => ({
+  model: {
+    ...model,
+    remoteSearch: RemoteData.Success(res.data.artists.items),
+  },
+});
+
+const searchArtistFailure = err => ({ model }) => ({
+  model: {
+    ...model,
+    remoteSearch: RemoteData.Failure(err),
+  },
+});
+
+// View
+
+function View({ model, dispatch }) {
+  return (
+    <div>
+      {pipe(model.remoteToken, [
+        RemoteData.fold({
+          Loading: () => "Fetching token...",
+          Success: token => (
+            <Fragment>
+              <Search
+                onChange={e => dispatch(changeArtist(e.target.value, token))}
+              />
+              {pipe(model.remoteSearch, [
+                RemoteData.fold({
+                  NotAsked: () => "Search for an artist",
+                  Loading: () => "Loading...",
+                  Success: artists =>
+                    artists.map(artist => {
+                      const maybeImage = Maybe.from(artist.images[2]);
+                      return (
+                        <div key={artist.id}>
+                          {pipe(maybeImage, [
+                            Maybe.fold({
+                              Just: image => (
+                                <img
+                                  src={image.url}
+                                  height={image.height}
+                                  width={image.width}
+                                />
+                              ),
+                              Nothing: () => (
+                                <div
+                                  style={{
+                                    backgroundColor: "#999",
+                                    height: 64,
+                                    width: 64,
+                                  }}
+                                />
+                              ),
+                            }),
+                          ])}
+                          <div>{artist.name}</div>
+                        </div>
+                      );
+                    }),
+                  Failure: () => "Failed to search artist",
+                }),
+              ])}
+            </Fragment>
+          ),
+          _: () => <a href={Spotify.AUTH_URL}>Login</a>,
         }),
-      )
-      |> P.map(res => res.data.items)
-      |> P.fold(items =>
-              this.setState(
-                  R.evolve({
-                      maybeArtists: Maybe.or(Maybe.from(items)),
-                  })), err => console.error(err))
-  }
+      ])}
+    </div>
+  );
+}
 
+function Search({ model, onChange }) {
+  return (
+    <div>
+      <input
+        autoFocus
+        onChange={onChange}
+        type="text"
+        placeholder="Search for artist"
+      />
+    </div>
+  );
+}
+
+// Helpers
+
+const accessTokenTask = IO.toTask(Dom.getHashParams)
+  .map(Dict.get("access_token"))
+  .flatMap(
+    Maybe.fold({
+      Just: Task.succeed,
+      Nothing: () => Task.fail("Could not find access_token"),
+    }),
+  );
+
+const searchArtist = Spotify.searchArtist;
+
+// App
+
+class Commander extends React.Component {
+  componentDidMount() {
+    this.process = this.props.command.fork(this.props.onFork);
+  }
+  componentWillUnmount() {
+    this.process.cancel();
+  }
   render() {
-    return (
-      <div>
-        {pipe(this.state.maybeToken, [
-          Maybe.fold({
-            Just: () => null,
-            Nothing: () => <a href={Spotify.AUTH_URL}>Login</a>,
-          }),
-        ])}
-        <div>
-          {pipe(this.state.maybeArtists, [
-            Maybe.fold({
-              Just: artists =>
-                artists.map(artist => <p key={artist.id}>{artist.name}</p>),
-              Nothing: () => "No artists",
-            }),
-          ])}
-        </div>
-      </div>
-    );
+    return null;
   }
 }
 
-export default App;
+function createProgram(init, View) {
+  return class App extends React.Component {
+    state = {
+      commands: [],
+      subscriptions: [],
+      ...init(),
+    };
+    dispatch = updater => {
+      this.setState(updater);
+    };
+    render() {
+      const { model, commands, subscriptions } = this.state;
+      return (
+        <Fragment>
+          <View model={model} dispatch={this.dispatch} />
+          {commands.map(command => (
+            <Commander
+              key={command.key}
+              command={command}
+              onFork={this.dispatch}
+            />
+          ))}
+          {Object.keys(subscriptions).map(key => (
+            <Commander
+              key={subscriptions[key].key}
+              command={subscriptions[key]}
+              onFork={this.dispatch}
+            />
+          ))}
+        </Fragment>
+      );
+    }
+  };
+}
+
+export default createProgram(init, View);

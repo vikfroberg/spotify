@@ -1,4 +1,5 @@
 import axios from "axios";
+import Task from "./Task";
 
 // const CLIENT_SECRET = "0407c924f6684b10902887a85a4b54b8";
 
@@ -20,7 +21,17 @@ const AUTH_QUERY = [
 export const AUTH_URL = "https://accounts.spotify.com/authorize?" + AUTH_QUERY;
 
 export function getTopArtists(token) {
-  return axios.get("https://api.spotify.com/v1/me/top/artists?limit=50", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  return Task.fromPromise(() =>
+    axios.get("https://api.spotify.com/v1/me/top/artists?limit=50", {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  );
+}
+
+export function searchArtist(q, token) {
+  return Task.fromPromise(() =>
+    axios.get("https://api.spotify.com/v1/search?type=artist&q=" + q, {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  );
 }
