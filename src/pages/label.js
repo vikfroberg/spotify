@@ -13,10 +13,17 @@ import { trace } from "../utils/debug";
 
 class Label extends Component {
   state = {
+    remoteArtists: RemoteData.NotAsked,
     remoteAlbums: RemoteData.NotAsked,
     remoteTracks: RemoteData.NotAsked,
   };
   componentDidMount() {
+    this.replace(
+      "artists",
+      Spotify.getLabelArtists(this.props.name, this.props.token),
+      this.artistsSuccess,
+      this.tokenExpired(this.artistsFailure),
+    );
     this.replace(
       "albums",
       Spotify.getLabelAlbums(this.props.name, this.props.token),
@@ -30,6 +37,12 @@ class Label extends Component {
       this.tokenExpired(this.tracksFailure),
     );
   }
+  artistsSuccess = data => {
+    this.setState({ remoteArtists: RemoteData.Success(data.items) });
+  };
+  artistsFailure = err => {
+    this.setState({ remoteArtists: RemoteData.Failure(err) });
+  };
   albumsSuccess = data => {
     this.setState({ remoteAlbums: RemoteData.Success(data.items) });
   };
@@ -74,6 +87,36 @@ class Label extends Component {
               </Block>
             ),
         )}
+        {pipe(this.state.remoteArtists, [
+          RemoteData.fold({
+            Success: artists =>
+              artists.map(artist => (
+                <Link key={artist.id} to={`/artists/${artist.id}`}>
+                  <Block>
+                    {pipe(artist.images.medium, [
+                      Maybe.fold({
+                        Just: image => (
+                          <Image src={image.url} height={300} width={300} />
+                        ),
+                        Nothing: () => (
+                          <Block
+                            $css={{
+                              width: "300px",
+                              height: "300px",
+                              backgroundColor: "#999",
+                            }}
+                          />
+                        ),
+                      }),
+                    ])}
+                  </Block>
+                  <Block $css={{ fontSize: 46 }}>{artist.name}</Block>
+                </Link>
+              )),
+            Failure: () => "Failed to load artist artists",
+            _: () => "Loading...",
+          }),
+        ])}
         {pipe(this.state.remoteAlbums, [
           RemoteData.fold({
             Success: albums =>

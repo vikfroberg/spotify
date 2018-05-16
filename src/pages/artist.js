@@ -2,6 +2,7 @@ import React, { Fragment } from "react";
 import RemoteData from "../data/remote-data";
 import Maybe from "../data/maybe";
 import Component from "../components/program";
+import qs from "query-string";
 import * as Spotify from "../requests/spotify";
 import * as R from "ramda";
 import { InlineBlock, Block, Image, FlexRow } from "../components/ui";
@@ -131,11 +132,22 @@ class Artist extends Component {
           }),
         ])}
         {pipe(this.state.remoteAlbums, [
+          RemoteData.map(albums => albums.map(a => a.label)),
+          RemoteData.map(R.uniq),
           RemoteData.fold({
-            Success: albums =>
-              trace(albums)
-                .map(a => a.label)
-                .join(", "),
+            Success: labels =>
+              labels.map(label => (
+                <Block key={label}>
+                  <Link
+                    to={{
+                      pathname: "/label",
+                      search: qs.stringify({ name: label }),
+                    }}
+                  >
+                    {label}
+                  </Link>
+                </Block>
+              )),
             Failure: () => "Failed to load labels",
             _: () => "Loading",
           }),

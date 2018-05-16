@@ -1,4 +1,4 @@
-export const trace = x => {
-  console.log(x);
+export const trace = key => x => {
+  console.log(key, x);
   return x;
 };

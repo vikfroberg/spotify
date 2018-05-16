@@ -5,6 +5,7 @@ import Maybe from "../data/maybe";
 import * as R from "ramda";
 import { Type } from "burk";
 import { trace } from "../utils/debug";
+import { liftAll, concatN } from "../utils/helpers";
 
 // const CLIENT_SECRET = "0407c924f6684b10902887a85a4b54b8";
 
@@ -129,6 +130,19 @@ export function searchTracks(q, token) {
   ).map(R.over(itemsLens, R.map(decodeTrack)));
 }
 
+export function getLabelArtists(name, token) {
+  const query = qs.stringify({
+    type: "artist",
+    limit: 50,
+    q: `label:"${name}"`,
+  });
+  return getNext(
+    "https://api.spotify.com/v1/search?" + query,
+    { Authorization: `Bearer ${token}` },
+    res => res.artists,
+  ).map(R.over(itemsLens, R.map(decodeArtist)));
+}
+
 export function getLabelAlbums(name, token) {
   const query = qs.stringify({
     type: "album",
@@ -198,8 +212,15 @@ export function getArtistAlbums(id, token) {
   return get(`https://api.spotify.com/v1/artists/${id}/albums`, {
     params: { include_groups: "single,album", limit: 50 },
     headers: { Authorization: `Bearer ${token}` },
-  }).map(data => ({
-    ...data,
-    items: data.items.map(decodeAlbum),
-  }));
+  }).flatMap(data => {
+    const ids = data.items.map(a => a.id);
+    return liftAll(
+      concatN(ids.length, []),
+      ids.map(id =>
+        getAlbum(id, token)
+          .map(x => [x])
+          .map(trace("album")),
+      ),
+    ).map(items => ({ ...data, items }));
+  });
 }

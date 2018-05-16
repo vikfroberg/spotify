@@ -6,16 +6,53 @@ const Task = (fork, cancel = noop) => ({
     return { cancel: () => cancel(execution) };
   },
   ap: task => {
-    const result = [];
     return Task(
       (resolve, reject) => {
-        const newFork = (resolve, reject) => {
+        const thatFork = task.fork;
+        const thisFork = (resolve, reject) => {
           const execution = fork(resolve, reject);
           return { cancel: () => cancel(execution) };
         };
+
+        let rejected = false;
+        let func = null;
+        let funcLoaded = false;
+        let val = null;
+        let valLoaded = false;
+
+        const guardResolve = setter => x => {
+          if (!rejected) {
+            setter(x);
+            if (funcLoaded && valLoaded) {
+              return resolve(func(val));
+            } else {
+              return x;
+            }
+          }
+        };
+
+        const guardReject = err => {
+          if (!rejected) {
+            rejected = true;
+            return reject(err);
+          }
+        };
+
         return [
-          task.fork(res => result.push(res), err => reject(err)),
-          newFork(res => result.push(res), err => reject(err)),
+          thisFork(
+            guardResolve(x => {
+              func = x;
+              funcLoaded = true;
+            }),
+            guardReject,
+          ),
+          thatFork(
+            guardResolve(x => {
+              val = x;
+              valLoaded = true;
+            }),
+            guardReject,
+          ),
         ];
       },
       executions => executions.forEach(execution => execution.cancel()),
