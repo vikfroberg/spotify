@@ -1,4 +1,5 @@
-import Task from "./Task";
+import * as R from "ramda";
+import Task from "./task";
 
 const IO = fork => ({
   fork,
@@ -6,8 +7,9 @@ const IO = fork => ({
   flatMap: fn => IO(res => fork(x => fn(x).fork(res))),
 });
 
-IO.fromTask = (a, b) => task =>
-  IO(res => task.fork(x => res(a(x)), y => res(b(y))));
+IO.fromTask = R.curry((a, b, task) =>
+  IO(res => task.fork(x => res(a(x)), y => res(b(y)))),
+);
 
 IO.toTask = io => Task((res, rej) => io.fork(res));
 

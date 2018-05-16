@@ -5,6 +5,22 @@ const Task = (fork, cancel = noop) => ({
     const execution = fork(resolve, reject);
     return { cancel: () => cancel(execution) };
   },
+  ap: task => {
+    const result = [];
+    return Task(
+      (resolve, reject) => {
+        const newFork = (resolve, reject) => {
+          const execution = fork(resolve, reject);
+          return { cancel: () => cancel(execution) };
+        };
+        return [
+          task.fork(res => result.push(res), err => reject(err)),
+          newFork(res => result.push(res), err => reject(err)),
+        ];
+      },
+      executions => executions.forEach(execution => execution.cancel()),
+    );
+  },
   map: fn =>
     Task((resolve, reject) => fork(x => resolve(fn(x)), reject), cancel),
   mapError: fn =>
@@ -30,5 +46,8 @@ Task.fromPromise = promise =>
     },
     cancel => cancel(),
   );
+
+const wait = ms => Task((res, rej) => setTimeout(res, ms), clearTimeout);
+Task.debounce = (ms, task) => wait(ms).flatMap(() => task);
 
 export default Task;

@@ -1,5 +1,5 @@
 import { Type } from "burk";
-import Maybe from "./Maybe";
+import Maybe from "./maybe";
 
 const Dict = Type("Dict", {
   Dict: ["x"],

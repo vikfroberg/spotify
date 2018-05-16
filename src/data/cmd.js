@@ -6,7 +6,7 @@ export const Cmd = fork => ({
   fork,
 });
 
-Cmd.none = Cmd(() => ({ cancel: () => {} }));
+Cmd.none = () => Cmd(() => ({ cancel: () => {} }));
 
 Cmd.fromTask = (resFn, rejFn, task) =>
   Cmd(fork => task.fork(x => fork(resFn(x)), y => fork(rejFn(y))));
