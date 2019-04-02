@@ -132,11 +132,13 @@ class Artist extends Component {
           }),
         ])}
         {pipe(this.state.remoteAlbums, [
-          RemoteData.map(albums => albums.map(a => a.label)),
-          RemoteData.map(R.uniq),
+          RemoteData.map(R.groupBy(a => a.label)),
+          RemoteData.map(R.toPairs),
+          RemoteData.map(R.sortBy(([label, albums]) => albums.length)),
+          RemoteData.map(R.reverse),
           RemoteData.fold({
-            Success: labels =>
-              labels.map(label => (
+            Success: labelPairs =>
+              labelPairs.map(([label, albums]) => (
                 <Block key={label}>
                   <Link
                     to={{
@@ -144,7 +146,7 @@ class Artist extends Component {
                       search: qs.stringify({ name: label }),
                     }}
                   >
-                    {label}
+                    {label} ({albums.length})
                   </Link>
                 </Block>
               )),
